@@ -1,0 +1,18 @@
+# Kronos A股复现 · 完整复现环境
+# PyTorch 需从 CUDA 专用索引安装：
+#   pip install torch --index-url https://download.pytorch.org/whl/cu126
+# 其余包从 PyPI 安装：
+#   pip install -r requirements.txt
+
+torch==2.9.1+cu126
+numpy==2.5.4
+pandas==3.1.0
+matplotlib==3.11.2
+einops==0.8.2
+huggingface_hub==2.4.0
+safetensors==0.8.0
+tqdm==4.70.1
+akshare==1.20.21
+plotly==7.1.0
+scipy==1.18.1
+streamlit>=1.30

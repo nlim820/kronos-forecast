@@ -1,0 +1,17 @@
+Kronos A股复现与评估
+====================
+
+本项目是对开源金融基础模型 Kronos 的独立复现与评估。
+
+上游模型与代码（MIT License）：
+- 模型权重：Kronos (NeoQuasar/Kronos-*, MIT)
+  https://huggingface.co/NeoQuasar
+- 推理代码（本仓库 model/ 等）：来自 shiyu-coder/Kronos
+  https://github.com/shiyu-coder/Kronos  (MIT License)
+  上游 README 留存于 docs/upstream_README.md
+
+本项目新增内容（scripts/ 下的脚本、docs/ 下的评估与文档、app.py、outputs/ 下的结果）：
+Copyright (c) 2026 小陆 — 以 MIT License 发布（见 LICENSE）。
+
+数据来源：akshare（东方财富 / 新浪行情接口），仅供研究学习使用，
+不构成任何投资建议。

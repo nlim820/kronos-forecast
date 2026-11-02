@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.Python
+build/
+dist/
+*.egg-info/
+.env
+.venv/
+env/
+venv/
+
+# 项目缓存（大体积 / 可重新生成，不进仓库）
+.cache/
+data/
+outputs/.kronos_cache/
+
+# OS / 编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
