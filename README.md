@@ -92,10 +92,19 @@ streamlit run app.py
 
 ## 🚀 在线看板
 
-**Live Demo**：<https://kronos-forecast-bsvnns6ldkgiaxuawi6mnm.streamlit.app/>
+看板已部署到 Streamlit Cloud（三页：预测图 / 评估指标 / 方法说明），为**静态结果展示**
+（读取已生成的 `outputs/`），不在云端跑模型推理，无需 GPU。
 
-> 免费实例会休眠，首次打开需冷启动 30–60 秒。
-> 看板为**静态结果展示**（读取已生成的 `outputs/`），不在云端跑模型推理，无需 GPU。
+**两种打开方式：**
+
+| 方式 | 链接 / 操作 | 适用场景 |
+|---|---|---|
+| **GitHub Codespaces（推荐，免登录）** | 仓库页面 `Code → Codespaces → Create codespace on main`，约 2 分钟自动装依赖并启动看板 | 现场演示、面试投屏 |
+| **Streamlit Cloud** | 部署实例已开启平台登录校验，**访客需登录才可查看** | 自己登录后演示 |
+
+> Codespaces 方式依赖仓库内的 `.devcontainer/devcontainer.json`（已配置自动 `streamlit run app.py` + 转发 8501 端口）。
+> Streamlit Cloud 免费实例会休眠，首次打开需冷启动 30–60 秒。
+> **注意：不要把带登录校验的 Streamlit 链接直接放进简历**，读者点开只会看到登录页。
 
 ## 🛠 部署到 Streamlit Cloud（自行复现）
 
