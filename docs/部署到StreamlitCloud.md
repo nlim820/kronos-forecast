@@ -36,11 +36,26 @@ Secrets 框留空（我们的 app 不需要任何密钥）。
   没有需要改的依赖字段——`requirements.txt` 已是轻量版，平台自动读取。
   点 **"Deploy"**，等待 1–2 分钟。看到 "Your app is live" 和一个 `https://xxxx.streamlit.app` 链接就成功了。
 
-- [ ] **5. 验证**
+- [ ] **5. ⚠️ 关掉登录墙（必做，否则链接对别人无效）**
+  Streamlit Cloud 新版部署表单里有一项 **"Require authentication"（要求登录）**，默认可能被勾上。
+  勾上时，**匿名访客（面试官、同学、甚至搜索引擎）打开链接都会被 303 重定向到登录页**，app 等于没上线。
+  - 部署页 / app 页面右下角点 **"Manage app"**（齿轮图标）→ 进入管理面板 → 找到 **Settings** 或 **Advanced settings**
+  - 取消勾选 **"Require authentication"**（或把 "Viewer access" 改成 Public / Anyone with the link）
+  - 保存后等待自动重载（约 30–60 秒）
+
+  **如何自查是否真的关掉了**：拿一个**未登录**的浏览器（或无痕窗口）打开链接。
+  若被弹到 `share.streamlit.io/-/auth/app` 或出现 "sign in to continue"，就是没关成功。
+  命令行自查：`curl -sI "https://<你的app>.streamlit.app/"` —— 期望 `HTTP/2 200`，
+  若返回 `303` 且 `Location` 指向 `share.streamlit.io/-/auth/...` 则说明登录墙仍在。
+
+- [ ] **6. 验证**
   打开链接，确认三页都能打开：
   1. **预测图**：四只标的（茅台 / 沪深300ETF / 中国核建 / 领益智造）的下拉能切换，扇形区间图能显示。
   2. **评估看板**：指标表（IC / 方向准确率 / bootstrap 区间）能显示。
   3. **方法说明**：结论文字完整。
+
+  > 注意：如果你自己是**登录状态**打开的，看到内容正常**不代表**别人也能看到。
+  > 第 5 步没做的话，你本地永远一切正常，但发给别人的链接是个登录页。
 
 ---
 
@@ -51,6 +66,11 @@ A：Main file path 填成了 `streamlit_app.py`。改成 **`app.py`** 即可—�
 
 **Q：打开页面是空的 / 部署超时？**
 A：正常不会。若真超时，先确认 Main file path 是 `app.py`（不是 `streamlit_app.py`），且 Repository 拼写是 `nlim820/kronos-forecast`。`requirements.txt` 已是轻量版，不会去装 torch。
+
+**Q：我自己打开一切正常，但同学说打不开？**
+A：99% 是**登录墙**（Require authentication）没关。你是 app 拥有者，登录态下永远能看；
+访客会被 303 重定向到 `share.streamlit.io/-/auth/app`。按上面第 5 步关掉即可，
+并用无痕窗口验证。命令行自查：`curl -sI "<你的app>.streamlit.app/"` 看是不是 200 而不是 303。
 
 **Q：图表里 plotly 不显示？**
 A：预测图 HTML 是自包含文件（plotly 已内联），`app.py` 用 `st.components.v1.html` 嵌入，不依赖云端装 plotly。若仍不显示，确认 `outputs/forecast_*.html` 和 `outputs/eval_*.csv` 已随仓库推送（已在仓库内）。

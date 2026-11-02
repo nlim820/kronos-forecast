@@ -88,16 +88,24 @@ streamlit run app.py
 - [`docs/复现笔记.md`](docs/复现笔记.md)：z-score 标准化 → 均值回归的机制发现
 - [`docs/Phase2评估.md`](docs/Phase2评估.md)：评估方法设计 + 全量结果 + 诚实结论
 - [`docs/简历_项目经历.md`](docs/简历_项目经历.md)：可直接粘贴进简历的项目经历
+- [`docs/部署到StreamlitCloud.md`](docs/部署到StreamlitCloud.md)：Streamlit Cloud 部署 checklist 与避坑
 
-## 🚀 部署到 Streamlit Cloud
+## 🚀 在线看板
+
+**Live Demo**：<https://kronos-forecast-bsvnns6ldkgiaxuawi6mnm.streamlit.app/>
+
+> 免费实例会休眠，首次打开需冷启动 30–60 秒。
+> 看板为**静态结果展示**（读取已生成的 `outputs/`），不在云端跑模型推理，无需 GPU。
+
+## 🛠 部署到 Streamlit Cloud（自行复现）
 
 1. 在 <https://share.streamlit.io> 关联本仓库 `nlim820/kronos-forecast`。
 2. **主文件填 `app.py`**，Branch 选 `main`，其余保持默认，**直接点 Deploy 即可**。
 3. 平台会自动读取仓库根目录的 `requirements.txt`（已为轻量版：仅 streamlit+pandas，
    不含 PyTorch），因此无需、也无法在界面指定其他依赖文件。
-4. 部署后看板只读 `outputs/`，无需 GPU，冷启动即可看到预测图与评估结论。
+4. ⚠️ **部署后务必关掉 "Require authentication"**（否则链接对访客只是登录页）——
+   详见 [`docs/部署到StreamlitCloud.md`](docs/部署到StreamlitCloud.md) 第 5 步。
 
-> 看板为**静态结果展示**（读取已生成的 outputs/），不在云端跑模型推理。
 > 若界面有 Python version 选项，保持默认 3.14 即可；如构建因 Python 版本失败，可降到 3.12。
 > 完整本地复现环境在 `requirements_full.txt`（含 PyTorch CUDA）。
 
