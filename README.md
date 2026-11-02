@@ -89,6 +89,16 @@ streamlit run app.py
 - [`docs/Phase2评估.md`](docs/Phase2评估.md)：评估方法设计 + 全量结果 + 诚实结论
 - [`docs/简历_项目经历.md`](docs/简历_项目经历.md)：可直接粘贴进简历的项目经历
 
+## 🚀 部署到 Streamlit Cloud
+
+1. 在 <https://share.streamlit.io> 关联本仓库 `nlim820/kronos-forecast`。
+2. **主文件填 `app.py`**；在「高级设置 → 依赖清单」里把 `requirements.txt` 改为
+   **`requirements_app.txt`**（否则会尝试安装 2.5GB 的 PyTorch，免费实例会超时）。
+3. 部署后看板只读 `outputs/`，无需 GPU，冷启动即可看到预测图与评估结论。
+
+> 看板为**静态结果展示**（读取已生成的 outputs/），不在云端跑模型推理。
+> 如需在云端实时推理，请改用 `requirements.txt` 并自备 GPU 实例。
+
 ## 致谢与版权
 
 - 模型 **Kronos**（`NeoQuasar/Kronos-*`，MIT）：<https://huggingface.co/NeoQuasar>
