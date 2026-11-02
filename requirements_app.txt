@@ -1,7 +1,0 @@
-# 仅部署 Streamlit 结果看板所需（app.py 只读 outputs/，不加载模型/权重）
-# 用于 Streamlit Cloud 等轻量环境，避免安装 2.5GB 的 PyTorch。
-streamlit>=1.30
-pandas==3.1.0
-numpy==2.5.4
-plotly==7.1.0
-scipy==1.18.1

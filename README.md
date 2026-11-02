@@ -20,8 +20,8 @@
 ```
 kronos-forecast/
 ├── README.md                 # 本文件（项目说明与结论）
-├── requirements.txt          # 完整复现环境（含 torch CUDA）
-├── requirements_app.txt      # 仅部署看板所需（无 torch，轻量）
+├── requirements.txt          # 轻量依赖（仅看板：streamlit+pandas，供 Streamlit Cloud 自动读取）
+├── requirements_full.txt     # 完整复现环境（含 torch CUDA，供本地推理/评估）
 ├── app.py                    # Streamlit 结果看板（读 outputs/，无需 GPU）
 ├── model/                    # 上游推理代码（MIT，见 NOTICE）
 ├── scripts/
@@ -46,8 +46,8 @@ python -m venv .venv && .venv\Scripts\activate
 # 2. 装 PyTorch（CUDA 版，从专用索引）
 pip install torch --index-url https://download.pytorch.org/whl/cu126
 
-# 3. 装其余依赖
-pip install -r requirements.txt
+# 3. 装其余依赖（完整环境，含 torch）
+pip install -r requirements_full.txt
 
 # 4. 冒烟测试（首次会联网从 HF 镜像拉权重）
 set HF_ENDPOINT=https://hf-mirror.com
@@ -59,8 +59,8 @@ python scripts/predict_demo.py --symbols 600519,510300,601611,002600
 # 6. 跑评估（4 标的 × 12 滚动时点）
 python scripts/evaluate.py --symbols 600519,510300,601611,002600 --pred-len 20 --rollings 12 --samples 8 --gap 22
 
-# 7. 看板
-pip install -r requirements_app.txt
+# 7. 看板（只需轻量依赖，可单独装）
+pip install -r requirements.txt
 streamlit run app.py
 ```
 
@@ -92,12 +92,14 @@ streamlit run app.py
 ## 🚀 部署到 Streamlit Cloud
 
 1. 在 <https://share.streamlit.io> 关联本仓库 `nlim820/kronos-forecast`。
-2. **主文件填 `app.py`**；在「高级设置 → 依赖清单」里把 `requirements.txt` 改为
-   **`requirements_app.txt`**（否则会尝试安装 2.5GB 的 PyTorch，免费实例会超时）。
-3. 部署后看板只读 `outputs/`，无需 GPU，冷启动即可看到预测图与评估结论。
+2. **主文件填 `app.py`**，Branch 选 `main`，其余保持默认，**直接点 Deploy 即可**。
+3. 平台会自动读取仓库根目录的 `requirements.txt`（已为轻量版：仅 streamlit+pandas，
+   不含 PyTorch），因此无需、也无法在界面指定其他依赖文件。
+4. 部署后看板只读 `outputs/`，无需 GPU，冷启动即可看到预测图与评估结论。
 
 > 看板为**静态结果展示**（读取已生成的 outputs/），不在云端跑模型推理。
-> 如需在云端实时推理，请改用 `requirements.txt` 并自备 GPU 实例。
+> 若界面有 Python version 选项，保持默认 3.14 即可；如构建因 Python 版本失败，可降到 3.12。
+> 完整本地复现环境在 `requirements_full.txt`（含 PyTorch CUDA）。
 
 ## 致谢与版权
 

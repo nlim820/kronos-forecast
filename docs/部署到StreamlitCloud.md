@@ -6,13 +6,15 @@
 
 ---
 
-## ⚠️ 一个必须记住的坑
+## 好消息：依赖已经帮你配好，不用改
 
-免费版 Streamlit Cloud 默认会去读仓库根目录的 `requirements.txt`，而那个文件里有一行装 PyTorch（约 2.5GB）。免费实例的构建超时会被它拖崩。
+仓库根目录的 `requirements.txt` **已经是轻量版**（只有 `streamlit` + `pandas`，几百 KB），
+Streamlit Cloud 部署时会**自动读取它**，不会去装 2.5GB 的 PyTorch。所以这个 checklist
+**不需要你去找"依赖清单"字段**——之前那个版本里"把 requirements.txt 改成 requirements_app.txt"
+的步骤已经作废，因为那个字段在这个版本的界面里根本不存在。
 
-**解决办法：部署时把依赖清单从 `requirements.txt` 改成 `requirements_app.txt`。** 后者只装 `streamlit` 和 `plotly`，几百 KB，秒过。
-
-这个坑已经帮你绕开了——`requirements_app.txt` 已经在仓库里，你只要在第 4 步选对它就行。
+如果你在 Advanced settings 里看到 Python version，保持 3.14 即可（如构建因 Python 版本失败，可降到 3.12）。
+Secrets 框留空（我们的 app 不需要任何密钥）。
 
 ---
 
@@ -24,19 +26,17 @@
 - [ ] **2. 新建应用**
   点页面上的 **"New app"**（或 "Deploy an app"）按钮。
 
-- [ ] **3. 选择本仓库**
-  在 Repository 下拉里选 **`nlim820/kronos-forecast`**。
-  - Branch：`main`
-  - Main file path：**`app.py`**（默认就会被识别到，确认一下即可）
+- [ ] **3. 填写主表单**
+  - Repository：**`nlim820/kronos-forecast`**（注意是 `nlim820`，多一个 `l`）
+  - Branch：**`main`**
+  - **Main file path：`app.py`**（⚠️ 不是 `streamlit_app.py`，填错会报 "This file does not exist"）
+  - App URL：默认即可（显示 "Domain is available"）
 
-- [ ] **4. 改依赖清单（关键）**
-  展开 **"Advanced settings"**（高级设置），找到 Dependencies 一项，把默认的 `requirements.txt` **改成 `requirements_app.txt`**。
-  > 不改这一步 = 免费实例被 torch 拖超时 = 部署失败。
+- [ ] **4. 直接点 Deploy**
+  没有需要改的依赖字段——`requirements.txt` 已是轻量版，平台自动读取。
+  点 **"Deploy"**，等待 1–2 分钟。看到 "Your app is live" 和一个 `https://xxxx.streamlit.app` 链接就成功了。
 
-- [ ] **5. 点 Deploy**
-  点 **"Deploy"**，等待 1–2 分钟。看到 "Your app is live" 和一个 `https://xxxx.streamlit.app` 的链接，就成功了。
-
-- [ ] **6. 验证**
+- [ ] **5. 验证**
   打开链接，确认三页都能打开：
   1. **预测图**：四只标的（茅台 / 沪深300ETF / 中国核建 / 领益智造）的下拉能切换，扇形区间图能显示。
   2. **评估看板**：指标表（IC / 方向准确率 / bootstrap 区间）能显示。
@@ -46,17 +46,20 @@
 
 ## 常见问题
 
-**Q：打开页面是空的 / 报错？**
-A：多半是第 4 步没改依赖清单，部署时去装 torch 超时了。删掉这个 app 重来，记得改 `requirements_app.txt`。
+**Q：页面报 "This file does not exist"（Main file path 处）？**
+A：Main file path 填成了 `streamlit_app.py`。改成 **`app.py`** 即可——仓库里的看板文件就叫 `app.py`。
+
+**Q：打开页面是空的 / 部署超时？**
+A：正常不会。若真超时，先确认 Main file path 是 `app.py`（不是 `streamlit_app.py`），且 Repository 拼写是 `nlim820/kronos-forecast`。`requirements.txt` 已是轻量版，不会去装 torch。
 
 **Q：图表里 plotly 不显示？**
-A：`app.py` 用的是 `st.components.v1.html` 内联嵌入 HTML，`requirements_app.txt` 里已含 `plotly`。若仍不显示，确认 `outputs/forecast_*.html` 和 `outputs/eval_*.csv` 已随仓库推送（已在仓库内，正常情况不用管）。
+A：预测图 HTML 是自包含文件（plotly 已内联），`app.py` 用 `st.components.v1.html` 嵌入，不依赖云端装 plotly。若仍不显示，确认 `outputs/forecast_*.html` 和 `outputs/eval_*.csv` 已随仓库推送（已在仓库内）。
 
 **Q：免费版每次打开很慢？**
-A：免费实例会"休眠"，长时间无人访问后首次打开要冷启动几十秒，这是正常的。点了之后等它转完即可。
+A：免费实例会"休眠"，长时间无人访问后首次打开要冷启动几十秒，正常。点了之后等它转完即可。
 
 **Q：想改看板内容？**
-A：改 `app.py` 后 `git commit && git push` 推到 `main` 分支，Streamlit Cloud 会自动重新部署。注意 `app.py` 只读 `outputs/` 的结果，如果要换标的/换结论，得先在本机跑 `scripts/predict_demo.py` / `scripts/evaluate.py` 重新生成 `outputs/`，再把新文件推送上去。
+A：改 `app.py` 后 `git commit && git push` 推到 `main` 分支，Streamlit Cloud 会自动重新部署。注意 `app.py` 只读 `outputs/` 的结果，要换标的/换结论，得先在本机跑 `scripts/predict_demo.py` / `scripts/evaluate.py` 重新生成 `outputs/`，再推送。
 
 ---
 
@@ -67,7 +70,7 @@ A：改 `app.py` 后 `git commit && git push` 推到 `main` 分支，Streamlit C
 ```bash
 # 用项目自带的 venv
 cd /d/projects/kronos-forecast
-.venv/Scripts/python.exe -m pip install -i https://mirrors.aliyun.com/pypi/simple streamlit plotly
+.venv/Scripts/python.exe -m pip install -i https://mirrors.aliyun.com/pypi/simple streamlit pandas
 .venv/Scripts/python.exe -m streamlit run app.py
 ```
 
@@ -80,6 +83,6 @@ cd /d/projects/kronos-forecast
 | 文件 | 作用 |
 |---|---|
 | `app.py` | 看板主程序（纯展示，不加载模型） |
-| `requirements_app.txt` | **部署用**依赖（streamlit + plotly，轻量） |
-| `requirements.txt` | 本地复现用完整依赖（含 torch，勿用于部署） |
+| `requirements.txt` | **部署用**轻量依赖（streamlit + pandas，Streamlit Cloud 自动读取） |
+| `requirements_full.txt` | 本地复现完整依赖（含 torch CUDA，仅供本机跑模型） |
 | `outputs/` | 预测图 + 评估结果（看板的数据来源） |
