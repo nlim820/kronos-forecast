@@ -53,13 +53,16 @@ pip install -r requirements_full.txt
 set HF_ENDPOINT=https://hf-mirror.com
 python scripts/smoke_test.py
 
-# 5. 跑预测（生成 outputs/forecast_*.html）
+# 5. 回归测试（数据层 + 指标层不联网；上游权重回归在权重未缓存时自动跳过）
+python -m pytest tests/ -q
+
+# 6. 跑预测（生成 outputs/forecast_*.html）
 python scripts/predict_demo.py --symbols 600519,510300,601611,002600
 
-# 6. 跑评估（4 标的 × 12 滚动时点）
+# 7. 跑评估（4 标的 × 12 滚动时点）
 python scripts/evaluate.py --symbols 600519,510300,601611,002600 --pred-len 20 --rollings 12 --samples 8 --gap 22
 
-# 7. 看板（只需轻量依赖，可单独装）
+# 8. 看板（只需轻量依赖，可单独装）
 pip install -r requirements.txt
 streamlit run app.py
 ```
@@ -121,7 +124,7 @@ streamlit run app.py
 | ① 证据：逐标的 IC 对照 | **首屏结论 + 4 标的 IC 镜像表**（本项目最有说服力的证据）+ 过度自信量化 |
 | ② 评估指标 | 4 方法 × 2 粒度的 IC / 方向准确率 / bootstrap 区间，含口径警示 |
 | ③ 预测图（次级证据） | 扇形区间图，页首明确标注「这张图本身就是过度自信的例证」 |
-| ④ 方法与局限 | 机制解释 + 5 条主动披露的局限 |
+| ④ 方法与局限 | 机制解释 + 6 条主动披露的局限（含未做严格 IS/OOS 拆分的说明） |
 
 **两种打开方式：**
 

@@ -11,8 +11,11 @@ env/
 venv/
 
 # 项目缓存（大体积 / 可重新生成，不进仓库）
+# 注意末尾的 / 与开头的斜杠：只忽略**仓库根目录**的 data/（联网抓取的行情缓存），
+# 否则 tests/data/（上游回归测试夹具，164KB，必须随仓库走）会被一并忽略，
+# 导致新克隆的仓库跑不了 test_kronos_regression.py。
 .cache/
-data/
+/data/
 outputs/.kronos_cache/
 
 # OS / 编辑器

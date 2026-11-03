@@ -446,22 +446,35 @@ def _approx_trade_days(start, n: int) -> pd.DatetimeIndex:
     return pd.DatetimeIndex(out)
 
 
+def next_trade_days_split(last_date, n: int):
+    """返回 (日期索引, 其中来自真实日历的天数)。
+
+    为什么要把「真实/近似」的天数显式返回：调用方（预测图、看板、文档）需要
+    这个数字才能**如实披露**轴的性质。此前只返回日期，展示层就笼统写成
+    「已按真实交易日历生成」——而实际上 60 日预测里有十几天的日期是工作日
+    近似出来的，这种表述属于过度承诺。
+    """
+    cal = get_trade_calendar()
+    last = pd.Timestamp(last_date)
+    fut = cal[cal > last]
+    if len(fut) >= n:
+        return fut[:n], n
+
+    n_real = len(fut)
+    print(f"   ⚠️ 交易日历仅覆盖到 {cal.max().date()}，剩余 {n - n_real} 天按工作日近似"
+          f"（已剔除元旦；其余法定休市以次年安排公布为准）")
+    if n_real == 0:
+        return _approx_trade_days(last + pd.Timedelta(days=1), n), 0
+    tail = _approx_trade_days(fut[-1] + pd.Timedelta(days=1), n - n_real)
+    return pd.DatetimeIndex(list(fut) + list(tail)), n_real
+
+
 def next_trade_days(last_date, n: int) -> pd.DatetimeIndex:
     """返回 last_date 之后的 n 个交易日（不含 last_date）。
 
     日历覆盖范围内的日期用真实交易日历（已含春节/国庆等法定休市）；
     超出覆盖范围（次年休市安排尚未公布）的部分按工作日近似并剔除元旦，
     近似段会在日志明确告警——这是已知局限，不是静默降级。
+    需要知道「几天是近似」时用 next_trade_days_split。
     """
-    cal = get_trade_calendar()
-    last = pd.Timestamp(last_date)
-    fut = cal[cal > last]
-    if len(fut) >= n:
-        return fut[:n]
-
-    print(f"   ⚠️ 交易日历仅覆盖到 {cal.max().date()}，剩余 {n - len(fut)} 天按工作日近似"
-          f"（已剔除元旦；其余法定休市以次年安排公布为准）")
-    if len(fut) == 0:
-        return _approx_trade_days(last + pd.Timedelta(days=1), n)
-    tail = _approx_trade_days(fut[-1] + pd.Timedelta(days=1), n - len(fut))
-    return pd.DatetimeIndex(list(fut) + list(tail))
+    return next_trade_days_split(last_date, n)[0]

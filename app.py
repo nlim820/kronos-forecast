@@ -25,6 +25,12 @@ SYMBOLS = {
     "002600": "领益智造",
 }
 
+# 交易所日历（新浪 tool_trade_date_hist_sina）当前公布到该日；次年休市安排通常在
+# 年底才发布。该日期之后的预测日期只能按「工作日 + 剔除元旦」近似。
+# 刷新日历（scripts/data_utils.py 的 get_trade_calendar(refresh=True)）后，
+# 需同步更新此常量，否则看板的披露数字会偏保守。
+CAL_COVERED_UNTIL = pd.Timestamp("2026-12-31")
+
 st.set_page_config(page_title="Kronos A股复现看板", layout="wide")
 
 
@@ -110,14 +116,36 @@ def overconfidence(det: pd.DataFrame) -> dict:
 
 @st.cache_data(show_spinner=False)
 def forecast_starts() -> dict:
-    """各标的预测起点（= 数据锚点的下一交易日），用于提示结果新鲜度。"""
+    """各标的预测日期轴（= 数据锚点的下一交易日起）。用于提示新鲜度与轴的性质。"""
     out = {}
     for s in SYMBOLS:
         p = OUT / f"pred_{s}.csv"
         if p.exists():
-            d = pd.to_datetime(pd.read_csv(p)["date"])
-            out[s] = (d.min(), d.max(), len(d))
+            out[s] = pd.DatetimeIndex(pd.to_datetime(pd.read_csv(p)["date"]))
     return out
+
+
+# 次年休市安排未公布时，至少要知道农历节的初一落在哪天：春节前一周到初七都休市，
+# 若「工作日近似」段压在春节上，图上日期就不是真实交易日。已知年份列在这里，
+# 新增年份按农历查定后补入（宁缺勿错，缺了只是少一条提示，不会给出错日期）。
+_CNY_FIRST_DAY = {2027: (2, 6)}
+
+
+def approx_axis_report(dates: pd.DatetimeIndex) -> tuple[int, pd.DatetimeIndex, list[str]]:
+    """统计预测轴里有多少天只是「工作日近似」，并检查是否压在已知农历节日上。
+
+    日历覆盖段内是真实交易日；覆盖段外只能按「工作日 − 元旦」推。把近似天数与
+    假日冲突显式算出来，看板才能如实说明轴的性质，而不是笼统地写「已按真实日历生成」。
+    """
+    approx = dates[dates > CAL_COVERED_UNTIL]
+    risky = []
+    for year, (mm, dd) in _CNY_FIRST_DAY.items():
+        cny = pd.Timestamp(year=year, month=mm, day=dd)
+        win_lo, win_hi = cny - pd.Timedelta(days=1), cny + pd.Timedelta(days=7)
+        hit = approx[(approx >= win_lo) & (approx <= win_hi)]
+        if len(hit):
+            risky.append(f"{cny:%Y-%m-%d} 起春节休市窗口内有 {len(hit)} 个近似日期")
+    return len(approx), approx, risky
 
 
 det = load_detail()
@@ -240,9 +268,9 @@ with tab2:
         "**块级重采样**（见下方口径说明）。**所有方法的区间均包含 0** → 没有任何统计显著的预测力。"
     )
     st.caption(
-        "补充口径：`zero` 基线的方向准确率显示为 0 —— 那是「常数 0 预测」下 "
-        "sign(0) 永远不等于 sign(实际) 导致的**指标退化**，不代表该基线很差；"
-        "对常数预测而言，方向准确率这个指标本身不适用。"
+        "补充口径：`zero` 基线的方向准确率一栏为**空（不适用）** —— 常数 0 预测下 "
+        "sign(0) 永远不等于 sign(实际)，方向准确率与相关系数都退化，不是「成绩很差」。"
+        "该行保留只用于验证指标实现在边界输入上不产出假数字（见 `tests/test_metrics.py`）。"
     )
 
     with st.expander("逐点明细 (eval_detail.csv)"):
@@ -295,11 +323,24 @@ with tab3:
         st.info(f"未找到 {sym} 的预测图。本地可用：`python scripts/predict_demo.py --symbols {sym}`")
 
     if sym in starts:
-        d0, d1, n = starts[sym]
-        st.caption(
-            f"预测区间：{d0:%Y-%m-%d} → {d1:%Y-%m-%d}，共 {n} 个交易日"
-            f"（已按真实交易日历生成，剔除周末与已知法定假日）。"
-        )
+        axis = starts[sym]
+        n_approx, approx_seg, risky = approx_axis_report(axis)
+        head = (f"预测区间：{axis.min():%Y-%m-%d} → {axis.max():%Y-%m-%d}，"
+                f"共 {len(axis)} 个交易日。")
+        if n_approx == 0:
+            st.caption(head + "全部落在交易所已公布的交易日历内，日期为真实交易日"
+                               "（已剔除周末与法定休市）。")
+        else:
+            st.caption(
+                head + f"其中 {len(axis) - n_approx} 天来自真实交易日历，末尾 {n_approx} 天"
+                f"（{approx_seg[0]:%Y-%m-%d} 起）为**工作日近似**——交易所次年休市安排"
+                f"尚未公布，近似段只剔除了周末与元旦。"
+            )
+            if risky:
+                st.warning(
+                    "近似段与已知农历节日重叠：" + "；".join(risky)
+                    + "。这些日期可能并非真实交易日，需刷新交易日历后重跑预测。"
+                )
 
 # ==========================================================================
 # ④ 方法与局限
@@ -327,9 +368,15 @@ with tab4:
         2. **样本量小**：4 标的 × 12 时点 = 48 个独立块，任何单点结论都不应过度外推。
            单标的只有 12 个点，逐标的 IC 只能看方向，不能看精度。
         3. **逐日粒度的 CI 偏窄**：见「② 评估指标」页的口径说明。
-        4. **交易日历只覆盖到当年年底**：跨年预测的末段按工作日近似并剔除元旦，
-           次年法定假日以官方安排公布后需重跑。
-        5. **结论只针对这 4 个标的、这段样本期**：不构成对 Kronos 模型本身的普遍否定，
+        4. **预测轴末段是近似日期**：交易日历只公布到 2026-12-31，之后的日期按
+           「工作日 − 元旦」推出；「③ 预测图」页会显示本次有多少天属于该近似段。
+           近似段落在春节等浮动假期上时会提示，需刷新日历后重跑。
+        5. **未做严格的 IS/OOS 拆分**：12 个滚动时点都是历史回看，不是「训练/测试」二分。
+           存在一个**准样本外证据**——「Kronos 等价于均值回归」这个判断是在
+           Phase 1 的 600519 / 510300 上先形成的，601611 / 002600 是之后才按要求加入，
+           而两只后加标的的镜像差值仍只有 +0.019 / −0.023。但这只是时间上的先后，
+           评测实现仍受前两只结果影响，**不能替代**「假设冻结 → 用未见数据一次性检验」。
+        6. **结论只针对这 4 个标的、这段样本期**：不构成对 Kronos 模型本身的普遍否定，
            而是「在本数据与评估口径下未检出 alpha」。
         """
     )
@@ -344,7 +391,7 @@ st.sidebar.markdown(
     "- 硬件：本地 RTX 4060 8GB 推理"
 )
 if starts:
-    anchor = min(v[0] for v in starts.values())
+    anchor = min(v.min() for v in starts.values())
     st.sidebar.markdown(f"### 结果新鲜度\n预测起点 {anchor:%Y-%m-%d}（锚点为上一交易日收盘）")
 st.sidebar.markdown(
     "### 说明\n"

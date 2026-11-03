@@ -107,6 +107,29 @@ def test_next_trade_days_cross_year_first_day():
     assert str(days[0].date()) == "2027-01-04"
 
 
+def test_next_trade_days_split_reports_approx_count():
+    """展示层要说清「几天是近似的」，split 版本必须给出与日历一致的划分。
+
+    日历覆盖到 2026-12-31 为止；从 2026-11-02 起 60 个交易日必然跨年，
+    因此近似天数应恰为「(2027-01-01, 末尾] 之间的天数」。
+    """
+    days, n_real = du.next_trade_days_split("2026-11-02", 60)
+    cal_end = du.get_trade_calendar().max()
+    assert 0 < n_real < 60
+    assert list(days[:n_real]) == [d for d in days if d <= cal_end]
+    assert all(d > cal_end for d in days[n_real:])
+    # 返回的日期序列必须与不带 split 的版本完全一致，两者不能分叉
+    assert list(days) == list(du.next_trade_days("2026-11-02", 60))
+
+
+def test_approx_segment_has_no_new_year():
+    """近似段唯一被剔除的固定休市日是元旦，其余休息日只来自周末。"""
+    days, n_real = du.next_trade_days_split("2026-11-02", 60)
+    approx = days[n_real:]
+    assert pd.Timestamp("2027-01-01") not in set(approx)
+    assert not any(d.weekday() >= 5 for d in approx)
+
+
 # --------------------------------------------------------------------------
 # 4. 盘中不得把未完成的 K 线写进缓存
 #    事故：2026-11-03 13:41 跑评估，load_ohlcv 的 end 传的是「今天」，ETF 接口

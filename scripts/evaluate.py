@@ -32,12 +32,36 @@ from scipy import stats
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from model import Kronos, KronosPredictor, KronosTokenizer
 import data_utils as du
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "outputs"
 OUT.mkdir(parents=True, exist_ok=True)
+
+
+def metrics(pred_list, act_list):
+    """返回 (n, 方向准确率, IC, RankIC)。
+
+    **常数预测的方向准确率不适用**：zero 基线的预测恒为 0，sign(0)=0 永远
+    不等于 sign(实际)，算出来是一个恒为 0 的数——它看起来像「比抛硬币差得多」，
+    其实只是指标退化。同理，常数序列的 Pearson/Spearman 分母方差为 0，无定义。
+    这两类情况统一返回 nan，由报告显式标注「不适用」，而不是把它当成绩展示。
+
+    放在模块级（而非 main 内）是为了能直接单测——测试无需加载模型权重。
+    """
+    pred = np.asarray(pred_list, dtype=float)
+    act = np.asarray(act_list, dtype=float)
+    n = len(pred)
+    if n == 0:
+        return 0, float("nan"), float("nan"), float("nan")
+    ok = ~(np.isnan(pred) | np.isnan(act))
+    p, a = pred[ok], act[ok]
+    if len(p) < 3 or np.ptp(p) == 0 or np.ptp(a) == 0:
+        return n, float("nan"), float("nan"), float("nan")
+    dir_acc = float(np.mean(np.sign(p) == np.sign(a)))
+    ic = float(stats.pearsonr(p, a)[0])
+    ric = float(stats.spearmanr(p, a)[0])
+    return n, dir_acc, ic, ric
 
 
 def load_ohlcv(symbol: str, days: int = 1100) -> pd.DataFrame:
@@ -155,6 +179,9 @@ def main():
     fixed_cutoffs = [s.strip() for s in args.cutoffs.split(",") if s.strip()]
 
     print(f"加载模型 {args.model} ...")
+    # 模型相关导入放到 main 内：模块级导入 torch + 模型会拖慢任何想 import
+    # evaluate（比如只测 metrics 函数）的场景，也让 CI 必须装 torch 才能跑测试。
+    from model import Kronos, KronosPredictor, KronosTokenizer
     tokenizer = KronosTokenizer.from_pretrained(args.tokenizer)
     model = Kronos.from_pretrained(args.model)
     predictor = KronosPredictor(model, tokenizer, device="cuda:0", max_context=512)
@@ -256,16 +283,7 @@ def main():
                   f"实际 {act_cum[-1]:+.2%} | 回归基线 {revert_ret:+.2%}")
 
     # ---------- 指标计算 ----------
-    def metrics(pred_list, act_list):
-        pred = np.array(pred_list, float)
-        act = np.array(act_list, float)
-        n = len(pred)
-        dir_acc = float(np.mean(np.sign(pred) == np.sign(act))) if n else float("nan")
-        # IC：去除 NaN
-        m = ~(np.isnan(pred) | np.isnan(act))
-        ic = float(stats.pearsonr(pred[m], act[m])[0]) if m.sum() > 2 else float("nan")
-        ric = float(stats.spearmanr(pred[m], act[m])[0]) if m.sum() > 2 else float("nan")
-        return n, dir_acc, ic, ric
+    # 指标函数已提到模块级（见文件头部 metrics），单位置定义、可直接单测。
 
     def bootstrap_ic_blocks(blocks, n_boot=2000, seed=42):
         """块级 bootstrap：以「标的 × cutoff」块为最小重采样单位，返回 IC 的 95% CI。
