@@ -1,6 +1,10 @@
 # 轻量依赖：仅供部署 Streamlit 看板（app.py 只读 outputs/，不加载模型/权重）
 # Streamlit Cloud 会自动读取本文件，无需手动指定。
 # 本地复现完整环境请改用 requirements_full.txt（含 PyTorch CUDA）。
-streamlit>=1.30
+#
+# 版本锁定说明：streamlit 从 1.30 起 API 变动频繁（components.v1.html → iframe、
+# use_container_width → width），不锁版本会在云端自动升级后突然崩掉。
+# 此处锁定本地已完整验证的版本。
+streamlit==1.66.1
 pandas>=2.2
 numpy>=1.26
