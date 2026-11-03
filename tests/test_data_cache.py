@@ -105,3 +105,64 @@ def test_next_trade_days_cross_year_first_day():
     """跨年首个交易日应为 2027-01-04（元旦 + 周末连休）。"""
     days = du.next_trade_days("2026-12-31", 3)
     assert str(days[0].date()) == "2027-01-04"
+
+
+# --------------------------------------------------------------------------
+# 4. 盘中不得把未完成的 K 线写进缓存
+#    事故：2026-11-03 13:41 跑评估，load_ohlcv 的 end 传的是「今天」，ETF 接口
+#    返回了当天未收盘的 bar。qfq 前复权以最新价为基准，这根脏 bar 让整段历史
+#    价格被重算——510300 与同期其它缓存相比最大相对差达 9.30%，cutoff 之后
+#    20 日收益从 -0.80% 变成 +1.83%，直接改写了评估结果。
+# --------------------------------------------------------------------------
+def _fake_ohlcv(last_date: str = "2026-10-30") -> pd.DataFrame:
+    dates = pd.date_range(end=last_date, periods=3, freq="B").strftime("%Y-%m-%d")
+    return pd.DataFrame({
+        "日期": dates,
+        "开盘": [1.0] * 3, "最高": [1.0] * 3, "最低": [1.0] * 3,
+        "收盘": [1.0] * 3, "成交量": [1.0] * 3, "成交额": [1.0] * 3,
+    })
+
+
+@pytest.fixture()
+def isolated(tmp_path, monkeypatch):
+    """把缓存目录指到临时路径，避免测试动到项目里的 data/raw。"""
+    monkeypatch.setattr(du, "DATA", tmp_path)
+    monkeypatch.setattr(du, "_required_last_date",
+                        lambda end, now=None: pd.Timestamp("2026-11-02"))
+    return tmp_path
+
+
+@pytest.mark.parametrize("is_etf", [False, True], ids=["stock", "etf"])
+def test_fetch_end_is_required_not_today(isolated, monkeypatch, is_etf):
+    """数据源收到的 end 必须是 required（已完成交易日），不能是调用方传的今天。"""
+    monkeypatch.setattr(du, "is_fund", lambda s: is_etf)
+    captured = {}
+
+    def fake(symbol, start, end, adjust):
+        captured["end"] = end
+        return _fake_ohlcv()
+
+    monkeypatch.setattr(du, "fetch", fake)
+    monkeypatch.setattr(du, "fund_fetch", fake)
+
+    du.get_price("510300" if is_etf else "600519", "20261001", "20261103", source="em")
+
+    assert captured["end"] == "20261102", (
+        f"抓取终点应收敛到 required=20261102，实际传了 {captured['end']}"
+    )
+
+
+def test_source_returning_intraday_bar_is_truncated(isolated, monkeypatch):
+    """数据源无视 end、硬返回今天未收盘的 bar 时，落盘前必须被剔除。"""
+    monkeypatch.setattr(du, "is_fund", lambda s: True)
+    # 模拟 ETF 接口行为：返回了 2026-11-03（今天，未收盘）这一行
+    monkeypatch.setattr(du, "fund_fetch", lambda *a, **k: _fake_ohlcv("2026-11-03"))
+
+    df = du.get_price("510300", "20261001", "20261103", source="em")
+
+    assert pd.to_datetime(df["日期"]).max() == pd.Timestamp("2026-11-02"), \
+        "返回值里不应含 2026-11-03 的盘中 bar"
+    saved = pd.read_csv(isolated / "raw" / "510300_20261001_20261103_qfq.csv",
+                        encoding="utf-8-sig")
+    assert pd.to_datetime(saved["日期"]).max() == pd.Timestamp("2026-11-02"), \
+        "落盘缓存里也不应含盘中 bar（否则 qfq 复权基准会被污染）"

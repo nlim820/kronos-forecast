@@ -331,19 +331,36 @@ def get_price(symbol: str, start: str, end: str, adjust: str = "qfq",
         print(f"   ♻️ 缓存陈旧（最后 {last.date() if last is not None else '空'} "
               f"< 应有 {pd.Timestamp(required).date()}），重新抓取 {symbol}")
 
+    # 抓取终点必须用 required（最近一个「数据应已完成」的交易日），而不是调用方
+    # 传的 end。否则盘中调用会把当天**未收盘的不完整 K 线**写进缓存；而 qfq 前复权
+    # 以最新价为基准，一根盘中脏数据会让整段历史价格被重算——实测 510300 因此在
+    # 13:41 抓取后整体偏移 9.3%，cuts 之后 20 日收益从 -0.80% 变成 +1.83%。
+    fetch_end = pd.Timestamp(required).strftime("%Y%m%d")
+
     if source == "tx":
-        df = fetch_tx(symbol, start, end, adjust)
+        df = fetch_tx(symbol, start, fetch_end, adjust)
     elif source == "sina":
-        df = _fetch_sina(symbol, start, end, adjust)
+        df = _fetch_sina(symbol, start, fetch_end, adjust)
     else:  # auto / em
-        df = fund_fetch(symbol, start, end, adjust) if is_fund(symbol) else fetch(symbol, start, end, adjust)
+        df = fund_fetch(symbol, start, fetch_end, adjust) if is_fund(symbol) else fetch(symbol, start, fetch_end, adjust)
+
+    # 双保险：即便数据源无视 end 参数、仍返回 required 之后的行（ETF 接口实测会在
+    # 盘中返回当天未完成的 bar），落盘前也一律剔除。qfq 以最新价为基准，一根盘中
+    # 脏 bar 会把整段历史价格重算，代价远大于"少一天数据"。
+    if df is not None and len(df) > 0 and "日期" in df.columns:
+        _dates = pd.to_datetime(df["日期"])
+        over = _dates > pd.Timestamp(required)
+        if over.any():
+            print(f"   🧹 {symbol} 剔除 {int(over.sum())} 行晚于 "
+                  f"{pd.Timestamp(required).date()} 的数据（未完成交易日）")
+            df = df.loc[~over].reset_index(drop=True)
 
     # 数据源偶发返回空表：宁可沿用旧缓存，也不要把缓存写坏
     if df is None or len(df) == 0:
         if path.exists():
             print(f"   ⚠️ {symbol} 本次返回空数据，沿用旧缓存")
             return pd.read_csv(path, encoding="utf-8-sig")
-        raise RuntimeError(f"{symbol} 取数失败：数据源返回空表（start={start}, end={end}）")
+        raise RuntimeError(f"{symbol} 取数失败：数据源返回空表（start={start}, end={fetch_end}）")
 
     # 防止「重抓反而更旧」把好缓存覆盖掉（数据源抖动 / 接口临时降级时会发生）
     if path.exists():

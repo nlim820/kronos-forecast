@@ -63,29 +63,35 @@ def pooled_ic(det: pd.DataFrame) -> dict:
 
 
 @st.cache_data(show_spinner=False)
-def ic_by_symbol(det: pd.DataFrame) -> pd.DataFrame:
-    """逐标的 IC —— 本项目最有说服力的证据。
+def ic_by_symbol(mtime: float) -> pd.DataFrame:
+    """逐标的 IC —— 直接读 evaluate.py 产出的 eval_by_symbol.csv，确保与文档同源。
 
     池化 IC 会把不同标的混在一起看，容易被单一标的带偏；拆开算才能看出
     Kronos 与「均值回归」基线是否在每个标的上都逐点镜像。
+    （mtime 只用于让缓存随产物更新而失效，本身不参与计算。）
     """
+    p = OUT / "eval_by_symbol.csv"
+    if not p.exists():
+        return pd.DataFrame()
+    b = pd.read_csv(p, dtype={"symbol": str})
+    b = b[b["method"].isin(["kronos", "mean_revert", "momentum"])]
+    piv = b.pivot_table(index="symbol", columns="method", values="ic", aggfunc="first")
+    cnt = b.groupby("symbol")["n"].first()
     rows = []
-    for sym, g in det.groupby("symbol"):
-        if len(g) < 3:
-            continue
+    for sym in piv.index:
         rows.append(
             {
                 "标的": f"{SYMBOLS.get(str(sym), str(sym))} ({sym})",
-                "样本数": len(g),
-                "Kronos IC": _pearson(g["kronos_ret"], g["act_ret"]),
-                "均值回归基线 IC": _pearson(g["revert_ret"], g["act_ret"]),
-                "动量基线 IC": _pearson(g["mom_ret"], g["act_ret"]),
+                "样本数": int(cnt.loc[sym]),
+                "Kronos IC": float(piv.loc[sym, "kronos"]),
+                "均值回归基线 IC": float(piv.loc[sym, "mean_revert"]),
+                "动量基线 IC": float(piv.loc[sym, "momentum"]),
+                # 带符号：正 = Kronos 略强于均值回归基线，负 = 略弱。
+                # 四个标的的绝对值都 ≤0.03，正负交错，说明两者在同一水平线上。
+                "差值 (Kronos − 基线)": float(piv.loc[sym, "kronos"] - piv.loc[sym, "mean_revert"]),
             }
         )
-    df = pd.DataFrame(rows)
-    # 镜像度 = 两条 IC 的绝对差，越小说明行为越接近
-    df["两法 IC 差值"] = (df["Kronos IC"] - df["均值回归基线 IC"]).abs()
-    return df.sort_values("Kronos IC", ascending=False).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values("Kronos IC", ascending=False).reset_index(drop=True)
 
 
 @st.cache_data(show_spinner=False)
@@ -116,7 +122,8 @@ def forecast_starts() -> dict:
 
 det = load_detail()
 pool = pooled_ic(det)
-by_sym = ic_by_symbol(det)
+_sym_path = OUT / "eval_by_symbol.csv"
+by_sym = ic_by_symbol(_sym_path.stat().st_mtime if _sym_path.exists() else 0.0)
 over = overconfidence(det)
 starts = forecast_starts()
 
@@ -184,20 +191,25 @@ with tab1:
     )
 
     show = by_sym.copy()
-    for col in ["Kronos IC", "均值回归基线 IC", "动量基线 IC", "两法 IC 差值"]:
+    diff_col = "差值 (Kronos − 基线)"
+    for col in ["Kronos IC", "均值回归基线 IC", "动量基线 IC", diff_col]:
         show[col] = show[col].map(lambda v: "—" if pd.isna(v) else f"{v:+.3f}")
     st.dataframe(show, width="stretch", hide_index=True)
 
+    max_abs_diff = float(by_sym[diff_col].abs().max())
+    sign_agree = float((np.sign(det["kronos_ret"]) == np.sign(det["revert_ret"])).mean())
     st.markdown(
         f"""
         **怎么读这张表**
 
-        - 两列 IC 的**符号和量级都高度一致**，差值最大也只有
-          {by_sym["两法 IC 差值"].max():.3f} —— 换成同一行代码的基线，结果几乎不变。
-        - 单标的样本只有 12 个配对点，**没有一个标的的 IC 达到 5% 显著性**
-          （最高者 IC 约 +0.51，对应 p≈0.09）。
-        - 沪深300ETF 上 Kronos 的 IC 甚至是**负的**，与个股方向相反——
-          说明这点「正相关」更像是标的特异性噪声，不是稳定信号。
+        - 两列 IC 的**符号和量级都高度一致**，差值绝对值最大仅 {max_abs_diff:.3f}，
+          且正负交错 —— 换成同一行代码的基线，结果几乎不变。
+        - 48 个预测里，Kronos 与基线的**方向一致率 {sign_agree:.1%}**
+          —— 这比任何单个相关系数都更直观。
+        - 单标的只有 12 个配对点，**没有一个标的的 IC 达到显著**
+          （最强的茅台 IC=+0.511，95% CI [−0.058, +0.809] 仍跨 0；明细见「② 评估指标」页）。
+        - 沪深300ETF 上 Kronos 的 IC 是**负的**，与个股方向相反——
+          说明这点「正相关」更像标的特异性噪声，不是稳定信号。
         """
     )
 
@@ -224,8 +236,8 @@ with tab2:
     res = pd.read_csv(OUT / "eval_result.csv")
     st.dataframe(res, width="stretch", hide_index=True)
     st.caption(
-        "IC / RankIC 的 95% 置信区间由 bootstrap(2000 次) 得到。"
-        "**所有方法的区间均包含 0** → 没有任何统计显著的预测力。"
+        "IC / RankIC 的 95% 置信区间由 bootstrap(2000 次) 得到；逐日粒度采用"
+        "**块级重采样**（见下方口径说明）。**所有方法的区间均包含 0** → 没有任何统计显著的预测力。"
     )
     st.caption(
         "补充口径：`zero` 基线的方向准确率显示为 0 —— 那是「常数 0 预测」下 "
@@ -248,10 +260,13 @@ with tab2:
     )
 
     st.warning(
-        "**口径说明（务必知道）**：本表的逐日粒度为 4 标的 × 12 时点 × 19 日 = 912 条，"
-        "但基线方法在一个 (标的, 时点) 块内的日预测是**同一个常数**，"
-        "独立信息量实际只有 48 个块。对基线而言，912 次 bootstrap 会**高估置信度**。"
-        "结论方向不受影响（所有区间本就含 0），但引用逐日 CI 时应注明这一点。"
+        "**口径说明（务必知道）**：逐日粒度为 4 标的 × 12 时点 × 19 日 = 912 条**名义**样本，"
+        "但同一「标的×时点」块内的 19 天来自同一条预测路径、同一段真实行情，并不独立；"
+        "解析基线在块内甚至是一个常数。因此逐日 CI 已改用**块级 bootstrap**"
+        "（以 48 个块为最小重采样单位），表内 `n_blocks` 列即有效重采样单位数。\n\n"
+        "**实测对照**：块级与单点两种口径的 CI 宽度比为 **0.82–1.05**（差异不到 20%）。"
+        "也就是说，原先的单点口径虽然假设不严谨，算出来的数值本身是可信的——"
+        "换口径不改变任何结论。这一点已写入 `docs/Phase2评估.md` 第五节。"
     )
 
 # ==========================================================================
